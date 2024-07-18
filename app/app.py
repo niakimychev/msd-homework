@@ -1,15 +1,17 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import requests
 import sqlite3
 import pandas as pd
 import datetime
 import time
 import threading
+import os
 
 app = Flask(__name__)
 
 API_URL = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=eur,czk"
 DATABASE = 'bitcoin_prices.db'
+TOKEN = os.environ.get('TOKEN')
 
 def init_db():
     conn = sqlite3.connect(DATABASE)
@@ -29,6 +31,14 @@ def fetch_btc_price():
     response = requests.get(API_URL)
     data = response.json()
     return data['bitcoin']['eur'], data['bitcoin']['czk']
+
+def cleanup_old_records():
+    conn = sqlite3.connect(DATABASE)
+    cursor = conn.cursor()
+    twelve_months_ago = datetime.datetime.now() - datetime.timedelta(days=365)
+    cursor.execute('DELETE FROM prices WHERE timestamp < ?', (twelve_months_ago,))
+    conn.commit()
+    conn.close()
 
 def store_btc_price():
     btc_eur, btc_czk = fetch_btc_price()
@@ -50,10 +60,17 @@ def calculate_averages():
 def background_task():
     while True:
         store_btc_price()
+        cleanup_old_records()
         time.sleep(300)
+
+def authenticate(request):
+    token = request.headers.get('Authorization')
+    return token == f"Bearer {TOKEN}"
 
 @app.route('/current_price', methods=['GET'])
 def current_price():
+    if not authenticate(request):
+        return jsonify({"error": "Unauthorized"}), 401
     btc_eur, btc_czk = fetch_btc_price()
     return jsonify({
         'btc_eur': btc_eur,
@@ -64,6 +81,8 @@ def current_price():
 
 @app.route('/averages', methods=['GET'])
 def averages():
+    if not authenticate(request):
+        return jsonify({"error": "Unauthorized"}), 401
     daily_avg, monthly_avg = calculate_averages()
     return jsonify({
         'daily_avg': daily_avg,

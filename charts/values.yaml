@@ -1,0 +1,21 @@
+replicaCount: 1
+
+image:
+  repository: jakimychevnikolaj/msd-homework
+  tag: latest
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 5000
+
+ingress:
+  enabled: false
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+env:
+  TOKEN: "tS5nFh64u7"
